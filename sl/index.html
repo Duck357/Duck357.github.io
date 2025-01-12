@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>扫雷游戏</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin-top: 20px;
+        }
+        .grid {
+            display: grid;
+            margin: 10px auto;
+            border: 1px solid #333;
+            cursor: pointer;
+        }
+        .cell {
+            width: 30px;
+            height: 30px;
+            border: 1px solid #ccc;
+            display: inline-block;
+            line-height: 30px;
+            text-align: center;
+            font-weight: bold;
+            background-color: #f0f0f0;
+        }
+        .cell.revealed {
+            background-color: #ddd;
+        }
+        .cell.mine {
+            background-color: red;
+        }
+        .cell.flagged {
+            background-color: yellow;
+        }
+        .control-panel {
+            margin-bottom: 10px;
+        }
+        .instructions {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #555;
+        }
+        .instructions li {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>扫雷游戏</h1>
+    <div class="control-panel">
+        <label for="rows">行数：</label>
+        <input type="number" id="rows" value="8" min="1" max="200">
+        <label for="cols">列数：</label>
+        <input type="number" id="cols" value="8" min="1" max="200">
+        <button onclick="startGame()">开始游戏</button>
+    </div>
+
+    <div id="gameGrid" class="grid"></div>
+
+    <div class="instructions">
+        <h3>操作说明：</h3>
+        <ul>
+            <li><strong>左键点击</strong>：挖开格子，显示该格子的内容。如果是地雷，游戏结束；如果是数字，则显示该数字；如果是空白格，则自动显示相邻的空白格。</li>
+            <li><strong>右键点击</strong>：标记或取消标记地雷。标旗表示你认为该格子上有地雷。</li>
+            <li>如果标记了所有地雷并且挖开所有非地雷格子，你就赢得了游戏！</li>
+        </ul>
+    </div>
+
+    <script>
+        let grid = [];
+        let gameOver = false;
+        let rows = 8;
+        let cols = 8;
+        let totalMines = 10;
+
+        function startGame() {
+            rows = parseInt(document.getElementById('rows').value);
+            cols = parseInt(document.getElementById('cols').value);
+            totalMines = Math.floor((rows * cols) / 6);
+            gameOver = false;
+            grid = [];
+            const gameGrid = document.getElementById('gameGrid');
+            gameGrid.innerHTML = '';
+            gameGrid.style.gridTemplateColumns = `repeat(${cols}, 30px)`;
+            gameGrid.style.gridTemplateRows = `repeat(${rows}, 30px)`;
+
+            // 初始化格子
+            for (let r = 0; r < rows; r++) {
+                grid[r] = [];
+                for (let c = 0; c < cols; c++) {
+                    const cell = document.createElement('div');
+                    cell.classList.add('cell');
+                    cell.setAttribute('data-row', r);
+                    cell.setAttribute('data-col', c);
+                    cell.addEventListener('click', revealCell);  // 左键点击
+                    cell.addEventListener('contextmenu', flagCell);  // 右键点击
+                    gameGrid.appendChild(cell);
+                    grid[r][c] = { revealed: false, flagged: false, mine: false, adjacentMines: 0 };
+                }
+            }
+
+            // 随机放置地雷
+            let minesPlaced = 0;
+            while (minesPlaced < totalMines) {
+                const row = Math.floor(Math.random() * rows);
+                const col = Math.floor(Math.random() * cols);
+                if (!grid[row][col].mine) {
+                    grid[row][col].mine = true;
+                    minesPlaced++;
+                }
+            }
+
+            // 计算邻近地雷的数量
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    if (grid[r][c].mine) continue;
+                    let adjacentMines = 0;
+                    for (let i = -1; i <= 1; i++) {
+                        for (let j = -1; j <= 1; j++) {
+                            const nr = r + i;
+                            const nc = c + j;
+                            if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && grid[nr][nc].mine) {
+                                adjacentMines++;
+                            }
+                        }
+                    }
+                    grid[r][c].adjacentMines = adjacentMines;
+                }
+            }
+        }
+
+        function revealCell(event) {
+            if (gameOver) return;
+
+            const cell = event.target;
+            const row = parseInt(cell.getAttribute('data-row'));
+            const col = parseInt(cell.getAttribute('data-col'));
+
+            if (grid[row][col].revealed || grid[row][col].flagged) return;
+
+            grid[row][col].revealed = true;
+            cell.classList.add('revealed');
+
+            if (grid[row][col].mine) {
+                cell.classList.add('mine');
+                revealAllCells(); // 游戏结束时显示所有格子
+                alert('游戏结束！你踩到地雷了。');
+                gameOver = true;
+                return;
+            }
+
+            if (grid[row][col].adjacentMines > 0) {
+                cell.textContent = grid[row][col].adjacentMines;
+            } else {
+                // 递归显示相邻的空白格
+                for (let i = -1; i <= 1; i++) {
+                    for (let j = -1; j <= 1; j++) {
+                        const nr = row + i;
+                        const nc = col + j;
+                        if (nr >= 0 && nr < rows && nc >= 0 && nc < cols) {
+                            const adjacentCell = document.querySelector(`[data-row="${nr}"][data-col="${nc}"]`);
+                            if (!grid[nr][nc].revealed) {
+                                revealCell({ target: adjacentCell });
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 检查是否赢得游戏
+            if (checkWin()) {
+                revealAllCells(); // 游戏结束时显示所有格子
+                alert('恭喜！你赢了！');
+                gameOver = true;
+            }
+        }
+
+        function flagCell(event) {
+            event.preventDefault(); // 阻止右键菜单
+            if (gameOver) return;
+
+            const cell = event.target;
+            const row = parseInt(cell.getAttribute('data-row'));
+            const col = parseInt(cell.getAttribute('data-col'));
+
+            if (grid[row][col].revealed) return; // 如果已经揭示，就不能标旗
+
+            grid[row][col].flagged = !grid[row][col].flagged; // 切换标旗状态
+            if (grid[row][col].flagged) {
+                cell.classList.add('flagged');
+            } else {
+                cell.classList.remove('flagged');
+            }
+        }
+
+        function revealAllCells() {
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const cell = document.querySelector(`[data-row="${r}"][data-col="${c}"]`);
+                    if (!grid[r][c].revealed) {
+                        grid[r][c].revealed = true;
+                        cell.classList.add('revealed');
+                        if (grid[r][c].mine) {
+                            cell.classList.add('mine');
+                        } else if (grid[r][c].adjacentMines > 0) {
+                            cell.textContent = grid[r][c].adjacentMines;
+                        }
+                    }
+                }
+            }
+        }
+
+        function checkWin() {
+            let revealedCount = 0;
+            let flaggedCount = 0;
+            let correctFlags = 0;
+
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    if (grid[r][c].revealed) revealedCount++;
+                    if (grid[r][c].flagged) {
+                        flaggedCount++;
+                        if (grid[r][c].mine) correctFlags++;
+                    }
+                }
+            }
+
+            // 如果揭示的格子数 + 标记的地雷数等于格子的总数，且标记的地雷是正确的
+            return revealedCount === (rows * cols - totalMines) && correctFlags === totalMines;
+        }
+
+        startGame(); // 初始化游戏
+    </script>
+
+</body>
+</html>
